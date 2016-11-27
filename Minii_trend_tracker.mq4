@@ -20,6 +20,7 @@ enum Sentiment {
 Sentiment CurrentSentiment = Undefined;
 extern int Slippage = 5; // TODO : Check slippage should be changed
 extern double TakeProfitPoints = 600;
+extern bool DoubleConfirmation = true;
 
 //+------------------------------------------------------------------+
 
@@ -48,20 +49,16 @@ void OnTick()
   {
 	UpdateSentiment();
 	if(CurrentSentiment == Undefined)
-	{
-		Alert("CurrentSentiment Undefined. Nowtime: ", TimeCurrent());
 	   return;
-	}
 
 	// If there is an open/pending order
 	if(OrderSelect(0 // Assumption : There is maximum one open order at any time
 		,SELECT_BY_POS) == true)
 	{
-		HandleOpenOrder();
+		//HandleOpenOrder();
 		return;
 	}
 
-	// OpenOrderAccordingToSentiment
 	SendOrderAndHandleErrors(CurrentSentiment == Bullish);
 	return;
   }
@@ -69,9 +66,18 @@ void OnTick()
 
 void UpdateSentiment()
 {
-	if (Bid > High[1])           
+	Sentiment previousBarDirectionBased = Undefined; // Used for double confirmation
+	if(DoubleConfirmation)
+	{
+		if(Close[1] > Open[1])
+			previousBarDirectionBased = Bullish;
+		else
+			previousBarDirectionBased = Bearish;
+	}
+
+	if (Bid > High[1] && previousBarDirectionBased != Bearish)           
 		CurrentSentiment = Bullish;
-	else if(Ask < Low[1])
+	else if(Ask < Low[1] && previousBarDirectionBased != Bullish)
 		CurrentSentiment = Bearish;
 	else
 		CurrentSentiment = Undefined;
