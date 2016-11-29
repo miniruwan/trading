@@ -21,6 +21,8 @@ Sentiment CurrentSentiment = Undefined;
 extern int Slippage = 5; // TODO : Check slippage should be changed
 extern double TakeProfitPoints = 600;
 extern bool DoubleConfirmation = true;
+extern double TrailStart = 100;
+extern double TrailStep = 50;
 
 //+------------------------------------------------------------------+
 
@@ -55,7 +57,7 @@ void OnTick()
 	if(OrderSelect(0 // Assumption : There is maximum one open order at any time
 		,SELECT_BY_POS) == true)
 	{
-		//HandleOpenOrder();
+		HandleOpenOrder();
 		return;
 	}
 
@@ -85,8 +87,49 @@ void UpdateSentiment()
 
 void HandleOpenOrder()
 {
+	// ============== Break even logic ===============================
+	// TODO : move this logic to a seperate file
+	if(OrderProfit()<0)
+		return;
 	bool isBuy = OrderType() == OP_BUY;
 	
+	int ticket = OrderTicket();
+	double openPrice = OrderOpenPrice();
+        double stopPrice = OrderStopLoss();
+	double takeProfit = OrderTakeProfit();
+	double stopLoss;
+	double minimumAllowedStopLoss;
+	int Min_Dist=MarketInfo(Symbol(),MODE_STOPLEVEL);// Min. distance
+	bool success = true;
+	// Assumption : TrailStart > TrailStep
+	if(isBuy && Bid >= (openPrice+TrailStart*Point))
+	{
+		// TODO : remove NormalizeDouble when resolved error 130
+		stopLoss = Bid - TrailStep * Point;
+	      minimumAllowedStopLoss = Bid - Min_Dist*Point;
+		stopLoss = MathMax(stopLoss, minimumAllowedStopLoss);
+		success = OrderModify(ticket,openPrice,
+				NormalizeDouble(stopLoss, Digits),
+				takeProfit,0,Blue);
+	}
+	if(!isBuy && Ask <= (openPrice-TrailStart*Point))
+	{
+		stopLoss = Ask + TrailStep * Point;
+	      minimumAllowedStopLoss = Ask + Min_Dist*Point;
+		stopLoss = MathMin(stopLoss, minimumAllowedStopLoss);
+		success = OrderModify(ticket,openPrice,
+				NormalizeDouble(stopLoss, Digits),
+				takeProfit,0,Red);
+	}
+		
+	if(!success)
+	{
+		Print("Error in OrderModify. Error code=",GetLastError());
+	}
+	// ============== Break even logic ===============================
+	
+	// Close the order based on sentiment
+/*
 	if(CurrentSentiment == Bullish && isBuy)
 		return;
 	
@@ -101,6 +144,7 @@ void HandleOpenOrder()
 		Slippage,
 		Red) == false) 
 		Alert("Close order error : ", GetLastError());
+*/
 }
 
 // TODO : Simplyfy these using https://www.mql5.com/en/code/8232
@@ -123,14 +167,12 @@ void SendOrderAndHandleErrors(bool isBuy)
           Alert("Increased the distance of SL of BUY order from ",stopLoss," to ", minimumAllowedStopLoss);
           stopLoss = minimumAllowedStopLoss;
       }
-
-	
    }
    else
    {
 	takeProfit = Ask - TakeProfitPoints*Point;
       stopLoss = High[1];
-      minimumAllowedStopLoss = Bid + Min_Dist*Point;
+      minimumAllowedStopLoss = Ask + Min_Dist*Point;
       Alert("SELL : stopLoss:", stopLoss, " minimumAllowedStopLoss:", minimumAllowedStopLoss);
       if(stopLoss < minimumAllowedStopLoss)
       {
